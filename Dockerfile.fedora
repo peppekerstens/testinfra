@@ -11,13 +11,17 @@ RUN dnf install -y \
     parted \
     samba-client \
     cups-client \
+    tar \
     && dnf clean all
 
-# Install PowerShell via Microsoft RPM repo
-RUN curl -sSL https://packages.microsoft.com/config/rhel/9/prod.repo \
-        -o /etc/yum.repos.d/microsoft-prod.repo \
-    && dnf install -y powershell \
-    && dnf clean all
+# Install PowerShell via direct tarball (RHEL repo not compatible with Fedora 40)
+RUN curl -sSL https://github.com/PowerShell/PowerShell/releases/download/v7.6.1/powershell-7.6.1-linux-x64.tar.gz \
+        -o /tmp/pwsh.tar.gz \
+    && mkdir -p /opt/microsoft/powershell/7 \
+    && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \
+    && rm /tmp/pwsh.tar.gz \
+    && ln -sf /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh \
+    && chmod +x /opt/microsoft/powershell/7/pwsh
 
 RUN pwsh -NoProfile -NonInteractive -Command \
     "Install-Module -Name Pester -MinimumVersion 5.2.0 -Force -SkipPublisherCheck -Scope AllUsers"

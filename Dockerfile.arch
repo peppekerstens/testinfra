@@ -15,7 +15,7 @@ RUN pacman -Syu --noconfirm \
     && pacman -Scc --noconfirm
 
 # Install PowerShell via direct binary (AUR not available in rootless containers)
-RUN curl -sSL https://github.com/PowerShell/PowerShell/releases/download/v7.4.6/powershell-7.4.6-linux-x64.tar.gz \
+RUN curl -sSL https://github.com/PowerShell/PowerShell/releases/download/v7.6.1/powershell-7.6.1-linux-x64.tar.gz \
         -o /tmp/pwsh.tar.gz \
     && mkdir -p /opt/microsoft/powershell/7 \
     && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \

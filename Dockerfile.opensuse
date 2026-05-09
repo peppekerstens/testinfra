@@ -11,14 +11,17 @@ RUN zypper --non-interactive refresh && zypper --non-interactive install -y \
     parted \
     samba-client \
     cups-client \
+    tar \
     && zypper --non-interactive clean --all
 
-# Install PowerShell via Microsoft RPM repo
-RUN rpm --import https://packages.microsoft.com/keys/microsoft.asc \
-    && zypper --non-interactive addrepo https://packages.microsoft.com/rhel/9/prod/ microsoft-prod \
-    && zypper --non-interactive --gpg-auto-import-keys refresh \
-    && zypper --non-interactive install -y powershell \
-    && zypper --non-interactive clean --all
+# Install PowerShell via direct tarball (RHEL repo RPMs not compatible with openSUSE)
+RUN curl -sSL https://github.com/PowerShell/PowerShell/releases/download/v7.6.1/powershell-7.6.1-linux-x64.tar.gz \
+        -o /tmp/pwsh.tar.gz \
+    && mkdir -p /opt/microsoft/powershell/7 \
+    && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \
+    && rm /tmp/pwsh.tar.gz \
+    && ln -sf /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh \
+    && chmod +x /opt/microsoft/powershell/7/pwsh
 
 RUN pwsh -NoProfile -NonInteractive -Command \
     "Install-Module -Name Pester -MinimumVersion 5.2.0 -Force -SkipPublisherCheck -Scope AllUsers"
