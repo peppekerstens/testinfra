@@ -2,22 +2,166 @@
 
 [![Build and Push GHCR Images](https://github.com/peppekerstens/testinfra/actions/workflows/build-images.yml/badge.svg)](https://github.com/peppekerstens/testinfra/actions/workflows/build-images.yml)
 
-Pre-built container images with **PowerShell 7.6.1**, **Pester 5**, and **PSScriptAnalyzer** for multi-distro CI testing of the [peppekerstens Linux PowerShell module collection](https://github.com/peppekerstens/).
+Pre-built container images with **PowerShell 7.6.1**, **Pester 5**, and **PSScriptAnalyzer** for multi-distro testing of the [peppekerstens Linux PowerShell module collection](https://github.com/peppekerstens/).
 
 Part of the **Linux PowerShell Cmdlet Parity** project — inspired by Evgenij Smirnov's [2025 European PowerShell Summit session](https://www.youtube.com/watch?v=RlzinWYIjBY) and documented in the blog series at [peppekerstens.github.io](https://peppekerstens.github.io/linux-command-wrapping-part-1/).
 
 ---
 
-## What it does
+## Primary use: local test-bed via Podman
 
-Each image is a thin layer on top of a standard distro base. It adds:
+The main reason these images exist is **local iteration**. GitHub Actions CI is the safety net; the images are how you get fast feedback while actively developing a module.
 
-- **PowerShell 7.6.1** — via the Microsoft APT/RPM repo (Ubuntu, Debian) or direct tarball (Fedora, openSUSE, Arch)
-- **Pester 5.2+** — installed `AllUsers` scope via `Install-Module`
-- **PSScriptAnalyzer** — installed `AllUsers` scope via `Install-Module`
-- **Linux tool set** — the CLI tools exercised by the module tests: `iproute2`, `ping`, `nc`, `ss`, `parted`, `fdisk`, `e2fsprogs`, `cups-client`, `samba-client`, `procps`, `bind-utils`
+The workflow is:
 
-Images are built and pushed to the GitHub Container Registry (GHCR) automatically on every change to any `Dockerfile.*` or the build workflow. They can also be triggered manually via `workflow_dispatch`.
+1. Build your module DLL (or `.psm1`) on your machine.
+2. Mount the repo into a container.
+3. Run Pester inside that container.
+4. Fix, rebuild, repeat — without pushing to GitHub.
+
+You do not need Docker Desktop. **Podman** is the recommended runtime — it is free, rootless-capable, and available in every Linux package manager.
+
+### On WSL2 (Windows development machine)
+
+Install Podman inside your WSL2 distro:
+
+```bash
+sudo apt install podman        # Ubuntu / Debian WSL2
+```
+
+Podman's `netavark` network backend needs `nftables`:
+
+```bash
+sudo apt install nftables
+```
+
+Pull an image (must run as root inside WSL2 — rootless Podman requires
+`newuidmap` which is not present in the default WSL2 userland):
+
+```bash
+sudo podman pull ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04
+```
+
+Run Pester against a module directory (mount the repo root to `/module`):
+
+```bash
+sudo podman run --rm --privileged \
+  -v "/mnt/c/Users/you/GitHub/MyModule:/module" \
+  ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04 \
+  pwsh -NoProfile -Command '
+    $config = New-PesterConfiguration
+    $config.Run.Path = "tests/MyModule.Tests.ps1"
+    $config.Run.Exit = $false
+    $config.Output.Verbosity = "Detailed"
+    Invoke-Pester -Configuration $config
+  '
+```
+
+> `--privileged` is required for write-operation tests that call `useradd`,
+> `usermod`, `ip addr add`, or `systemctl`. Read-only tests work with just
+> `--cap-add=NET_RAW`.
+
+### On Ubuntu / Debian natively
+
+```bash
+sudo apt install podman nftables
+
+sudo podman pull ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04
+
+sudo podman run --rm --privileged \
+  -v "$(pwd):/module" \
+  ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04 \
+  pwsh -NoProfile -Command '
+    $config = New-PesterConfiguration
+    $config.Run.Path = "tests/MyModule.Tests.ps1"
+    $config.Run.Exit = $false
+    $config.Output.Verbosity = "Detailed"
+    Invoke-Pester -Configuration $config
+  '
+```
+
+### Running all five distros in sequence
+
+```bash
+for IMAGE in \
+  ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04 \
+  ghcr.io/peppekerstens/pwsh-pester-debian:12 \
+  ghcr.io/peppekerstens/pwsh-pester-fedora:40 \
+  ghcr.io/peppekerstens/pwsh-pester-opensuse:tumbleweed \
+  ghcr.io/peppekerstens/pwsh-pester-arch:latest
+do
+  echo "=== $IMAGE ==="
+  sudo podman run --rm --privileged \
+    -v "$(pwd):/module" \
+    "$IMAGE" \
+    pwsh -NoProfile -Command '
+      $config = New-PesterConfiguration
+      $config.Run.Path = "tests/MyModule.Tests.ps1"
+      $config.Run.Exit = $false
+      $config.Output.Verbosity = "Normal"
+      Invoke-Pester -Configuration $config
+    '
+done
+```
+
+### Pre-built DLL vs build inside container
+
+The containers do not have `dotnet` installed. Build your DLL on the host
+(Windows or WSL2) first, then mount the whole repo. Pester finds the DLL via
+the relative path in `BeforeAll`.
+
+If you need a clean build-and-test loop, install the .NET 8 SDK in WSL2
+(`sudo apt install dotnet-sdk-8.0`) and run `dotnet build` there before
+starting the container.
+
+---
+
+## Secondary use: GitHub Actions CI
+
+Each module repo's `.github/workflows/pester.yml` uses the same images via
+the `container:` key, so local and CI runs are identical environments.
+
+```yaml
+jobs:
+  pester:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        container:
+          - ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04
+          - ghcr.io/peppekerstens/pwsh-pester-debian:12
+          - ghcr.io/peppekerstens/pwsh-pester-fedora:40
+          - ghcr.io/peppekerstens/pwsh-pester-opensuse:tumbleweed
+          - ghcr.io/peppekerstens/pwsh-pester-arch:latest
+    container:
+      image: ${{ matrix.container }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+      - name: Build
+        run: dotnet build src/MyModule/MyModule.csproj --configuration Release
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/MyModule.Tests/MyModule.Tests.ps1'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+```
+
+Key points that differ from the local invocation:
+- `actions/setup-dotnet` installs the SDK inside the container at job runtime.
+- `shell: pwsh` is required so `$PSScriptRoot` is set correctly in the `run:` block (the runner writes the script to a temporary `.ps1` file and executes it).
+- `$config.Run.Exit = $true` makes Pester exit non-zero on failure, which fails the step.
+- `credentials:` block is required because the images live on GHCR (a private registry relative to the runner).
 
 ---
 
@@ -31,78 +175,15 @@ Images are built and pushed to the GitHub Container Registry (GHCR) automaticall
 | `ghcr.io/peppekerstens/pwsh-pester-opensuse` | `opensuse/tumbleweed` | `tumbleweed` | Direct tarball v7.6.1 |
 | `ghcr.io/peppekerstens/pwsh-pester-arch` | `archlinux:latest` | `latest` | Direct tarball v7.6.1 |
 
-> **openSUSE note:** `leap:15.6` ships a glibc too old for the PS 7.6.1 tarball (segfault on startup). `tumbleweed` is used instead — it has a current glibc and rolling packages.
+> **openSUSE note:** `leap:15.6` ships a glibc too old for the PS 7.6.1 tarball (segfault on startup). `tumbleweed` is used instead.
 >
-> **Fedora / Arch note:** The Microsoft RHEL9 RPM repository is not compatible with these distros. All three use the upstream tarball release directly.
+> **Fedora / Arch note:** The Microsoft RHEL9 RPM is not compatible with these distros. The upstream tarball from GitHub releases works cleanly on all three.
 
----
-
-## Usage
-
-### Pull an image
-
-```bash
-docker pull ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04
-```
-
-### Run Pester against a module
-
-Mount the module directory to `/module` — the default `CMD` runs `Invoke-Pester -Output Detailed` from that path.
-
-```bash
-# From a module repo root
-docker run --rm \
-  --cap-add=NET_RAW \
-  -v "$(pwd):/module" \
-  ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04
-```
-
-> `--cap-add=NET_RAW` is required for tests that call `ping`. Without it, rootless containers return "Operation not permitted" even when the `ping` binary is installed.
-
-### Run via docker compose (recommended)
-
-Every module repo contains a `docker-compose.test.yml` that wires up all five distros:
-
-```powershell
-# From a module repo root
-docker compose -f docker-compose.test.yml up --abort-on-container-exit
-```
-
-### Run all modules at once
-
-A workspace-level script is available at the GitHub root (`run-tests-docker.ps1`):
-
-```powershell
-# All modules, all distros
-.\run-tests-docker.ps1
-
-# Single module, all distros
-.\run-tests-docker.ps1 -Module NetTCPIP.Linux
-
-# Single module, specific compose file
-.\run-tests-docker.ps1 -Module NetTCPIP.Linux -Compose docker-compose.test.yml
-```
-
----
-
-## Podman
-
-`podman compose` works as a drop-in replacement for `docker compose`. No licensing concern.
-
-On **Windows**: install Podman directly in WSL2 (`sudo apt install podman`) rather than using `podman machine init` — the machine init downloads a large VM image from `quay.io` and is prone to TLS timeout on slow connections.
-
-WSL2 Podman also requires `nftables` for container networking:
-
-```bash
-sudo apt install nftables
-sudo nft list ruleset   # verify
-```
+Images are rebuilt and pushed to GHCR automatically on every `Dockerfile.*` change via the `build-images.yml` workflow, and can be triggered manually via `workflow_dispatch`.
 
 ---
 
 ## Tool set per distro
-
-The tool set installed in each image is chosen to match what the module tests actually call. The `netcat` package name varies by distro — this is one of the things that made a shared base image impractical.
 
 | Tool | Ubuntu / Debian | Fedora | openSUSE | Arch |
 |---|---|---|---|---|
@@ -117,55 +198,28 @@ The tool set installed in each image is chosen to match what the module tests ac
 | `lpstat` | `cups-client` | `cups-client` | `cups-client` | `cups` |
 | .NET globalization | (transitive) | (transitive) | `libicu` (explicit) | (transitive) |
 
-> **openSUSE** requires `libicu` to be installed explicitly — other distros pull it in as a transitive dependency of some other package. Without it, PowerShell / .NET throws a globalization exception at startup.
-
----
-
-## GitHub Actions integration
-
-Each module repo's `.github/workflows/pester.yml` references these images via the `container:` key:
-
-```yaml
-jobs:
-  pester-linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        distro:
-          - { image: 'ghcr.io/peppekerstens/pwsh-pester-ubuntu:24.04',       slug: ubuntu-24.04 }
-          - { image: 'ghcr.io/peppekerstens/pwsh-pester-debian:12',          slug: debian-12 }
-          - { image: 'ghcr.io/peppekerstens/pwsh-pester-fedora:40',          slug: fedora-40 }
-          - { image: 'ghcr.io/peppekerstens/pwsh-pester-opensuse:tumbleweed',slug: opensuse-tumbleweed }
-          - { image: 'ghcr.io/peppekerstens/pwsh-pester-arch:latest',        slug: arch-latest }
-    container:
-      image: ${{ matrix.distro.image }}
-      options: --cap-add=NET_RAW
-    steps:
-      - uses: actions/checkout@v4
-      - run: pwsh -NoProfile -Command "Invoke-Pester -Path ./<ModuleName> -Output Detailed"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pester-${{ matrix.distro.slug }}
-          path: results.xml
-```
-
-> Artifact names use the `slug` field — colons and slashes in image tags are not valid in artifact names.
-
----
-
-## Why not a single shared base image?
-
-The tool set needed by the tests differs enough between distros that a shared base would either pull in too many packages (bloating all images) or still require per-distro layers. The five separate `Dockerfile.*` files are straightforward and transparent — each distro's quirks are visible in plain sight rather than hidden in a shared base layer.
+> **openSUSE** requires `libicu` explicitly — other distros pull it in transitively. Without it, PowerShell throws a globalization exception at startup.
 
 ---
 
 ## Lessons learned
 
-**`ping` needs `--cap-add=NET_RAW`.** Rootless containers drop the `CAP_NET_RAW` capability required for ICMP raw sockets. The `ping` binary may be installed and executable, but it will return "Operation not permitted" unless you add this capability at `docker run` or `cap_add` in compose.
+**`--privileged` vs `--cap-add=NET_RAW`.** Read-only tests need `--cap-add=NET_RAW` for `ping`. Write tests (user/group creation, interface configuration, systemd interaction) need `--privileged`. Using `--privileged` for everything is the safe default in a local test environment.
 
-**openSUSE Tumbleweed, not Leap.** `leap:15.6` ships glibc 2.31; PS 7.6.1 requires a newer glibc and segfaults silently at startup. Tumbleweed is the rolling release and has current glibc.
+**`sudo podman` in WSL2.** Rootless Podman requires `newuidmap`, which is not in the default WSL2 userland. Running as root sidesteps the issue cleanly. The containers themselves are also root inside, which matches GHA container behaviour.
 
-**Tarball install for Fedora, openSUSE, Arch.** The Microsoft RHEL9 `.rpm` package is built for RHEL/CentOS. It installs on Fedora 40 but the runtime crashes on incompatible system libraries. The upstream tarball from GitHub releases works cleanly on all three.
+**`shell: pwsh` in GHA is mandatory.** Using `run: pwsh -Command "..."` leaves `$PSScriptRoot` empty, which breaks any test that uses it to locate its own DLL or helper files. `shell: pwsh` causes the runner to write the script to a temp file and set `$PSScriptRoot` correctly.
+
+**`& id -u` in `BeforeDiscovery` is fragile.** On some distros it triggers unexpected errors inside Pester discovery. Use `/proc/self/status` instead:
+```powershell
+$script:isRoot = $IsLinux -and (
+    [System.IO.File]::ReadAllText('/proc/self/status') -match '(?m)^Uid:\s+(\d+)' -and
+    $Matches[1] -eq '0')
+```
+
+**openSUSE Tumbleweed, not Leap.** `leap:15.6` ships glibc 2.31; PS 7.6.1 requires a newer glibc and segfaults silently at startup.
+
+**Tarball install for Fedora, openSUSE, Arch.** The Microsoft RHEL9 `.rpm` is built for RHEL/CentOS. The upstream tarball from GitHub releases works cleanly on all three.
 
 **`nftables` required for Podman networking in WSL2.** Podman's `netavark` network backend calls `nft` at container startup. If `nftables` is absent, every `podman run` fails with `netavark: nftables error: unable to execute "nft"`.
 
@@ -175,8 +229,9 @@ The tool set needed by the tests differs enough between distros that a shared ba
 
 | Version | Notes |
 |---|---|
-| 0.1.0 | Initial release. 5 Dockerfiles; GHCR build workflow; `build-images.yml` push on Dockerfile change. |
-| 0.1.1 | openSUSE base changed `leap:15.6` → `tumbleweed`; added `gzip`, `libicu`. Fedora/openSUSE/Arch PS install changed to direct tarball. Added `iputils-ping`, `procps`, and distro-specific `netcat` packages to all images. |
+| 0.1.0 | Initial release. 5 Dockerfiles; GHCR build workflow. |
+| 0.1.1 | openSUSE base `leap:15.6` → `tumbleweed`; added `gzip`, `libicu`. Fedora/openSUSE/Arch PS install changed to direct tarball. Added `iputils-ping`, `procps`, distro-specific `netcat` to all images. |
+| 0.2.0 | README rewritten to lead with local podman/WSL2 test-bed usage. GHA integration section updated with `shell: pwsh`, `credentials:`, and `--privileged` guidance. Lessons-learned section expanded with `$PSScriptRoot` and `id -u` pitfalls. |
 
 ---
 
