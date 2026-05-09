@@ -1,0 +1,30 @@
+FROM opensuse/leap:15.6
+
+RUN zypper --non-interactive refresh && zypper --non-interactive install -y \
+    curl \
+    wget \
+    iproute2 \
+    bind-utils \
+    util-linux \
+    e2fsprogs \
+    dosfstools \
+    parted \
+    samba-client \
+    cups-client \
+    && zypper --non-interactive clean --all
+
+# Install PowerShell via Microsoft RPM repo
+RUN rpm --import https://packages.microsoft.com/keys/microsoft.asc \
+    && zypper --non-interactive addrepo https://packages.microsoft.com/rhel/9/prod/ microsoft-prod \
+    && zypper --non-interactive --gpg-auto-import-keys refresh \
+    && zypper --non-interactive install -y powershell \
+    && zypper --non-interactive clean --all
+
+RUN pwsh -NoProfile -NonInteractive -Command \
+    "Install-Module -Name Pester -MinimumVersion 5.2.0 -Force -SkipPublisherCheck -Scope AllUsers"
+
+RUN pwsh -NoProfile -NonInteractive -Command \
+    "Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck -Scope AllUsers"
+
+WORKDIR /module
+CMD ["pwsh", "-NoProfile", "-Command", "Invoke-Pester -Output Detailed"]

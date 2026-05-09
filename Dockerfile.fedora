@@ -1,0 +1,29 @@
+FROM fedora:40
+
+RUN dnf install -y \
+    curl \
+    wget \
+    iproute \
+    bind-utils \
+    util-linux \
+    e2fsprogs \
+    dosfstools \
+    parted \
+    samba-client \
+    cups-client \
+    && dnf clean all
+
+# Install PowerShell via Microsoft RPM repo
+RUN curl -sSL https://packages.microsoft.com/config/rhel/9/prod.repo \
+        -o /etc/yum.repos.d/microsoft-prod.repo \
+    && dnf install -y powershell \
+    && dnf clean all
+
+RUN pwsh -NoProfile -NonInteractive -Command \
+    "Install-Module -Name Pester -MinimumVersion 5.2.0 -Force -SkipPublisherCheck -Scope AllUsers"
+
+RUN pwsh -NoProfile -NonInteractive -Command \
+    "Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck -Scope AllUsers"
+
+WORKDIR /module
+CMD ["pwsh", "-NoProfile", "-Command", "Invoke-Pester -Output Detailed"]

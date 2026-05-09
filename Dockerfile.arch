@@ -1,0 +1,33 @@
+FROM archlinux:latest
+
+# Update and install prerequisites + tools used by Linux modules
+RUN pacman -Syu --noconfirm \
+    curl \
+    wget \
+    iproute2 \
+    bind \
+    util-linux \
+    e2fsprogs \
+    dosfstools \
+    parted \
+    samba \
+    cups \
+    && pacman -Scc --noconfirm
+
+# Install PowerShell via direct binary (AUR not available in rootless containers)
+RUN curl -sSL https://github.com/PowerShell/PowerShell/releases/download/v7.4.6/powershell-7.4.6-linux-x64.tar.gz \
+        -o /tmp/pwsh.tar.gz \
+    && mkdir -p /opt/microsoft/powershell/7 \
+    && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/7 \
+    && rm /tmp/pwsh.tar.gz \
+    && ln -sf /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh \
+    && chmod +x /opt/microsoft/powershell/7/pwsh
+
+RUN pwsh -NoProfile -NonInteractive -Command \
+    "Install-Module -Name Pester -MinimumVersion 5.2.0 -Force -SkipPublisherCheck -Scope AllUsers"
+
+RUN pwsh -NoProfile -NonInteractive -Command \
+    "Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck -Scope AllUsers"
+
+WORKDIR /module
+CMD ["pwsh", "-NoProfile", "-Command", "Invoke-Pester -Output Detailed"]
