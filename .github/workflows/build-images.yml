@@ -2,7 +2,7 @@ name: Build and Push GHCR Images
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'Dockerfile.*'
       - '.github/workflows/build-images.yml'
