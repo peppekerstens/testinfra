@@ -1,4 +1,4 @@
-FROM opensuse/leap:15.6
+FROM opensuse/tumbleweed
 
 RUN zypper --non-interactive refresh && zypper --non-interactive install -y \
     curl \
@@ -12,6 +12,11 @@ RUN zypper --non-interactive refresh && zypper --non-interactive install -y \
     samba-client \
     cups-client \
     tar \
+    gzip \
+    libicu \
+    iputils \
+    procps \
+    netcat-openbsd \
     && zypper --non-interactive clean --all
 
 # Install PowerShell via direct tarball (RHEL repo RPMs not compatible with openSUSE)

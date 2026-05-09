@@ -35,9 +35,9 @@ jobs:
             image_name: pwsh-pester-fedora
             image_tag: "40"
           - dockerfile: Dockerfile.opensuse
-            tag: opensuse/leap
+            tag: opensuse/tumbleweed
             image_name: pwsh-pester-opensuse
-            image_tag: leap
+            image_tag: tumbleweed
           - dockerfile: Dockerfile.arch
             tag: archlinux
             image_name: pwsh-pester-arch

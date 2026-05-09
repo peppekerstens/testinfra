@@ -12,6 +12,9 @@ RUN dnf install -y \
     samba-client \
     cups-client \
     tar \
+    iputils \
+    procps-ng \
+    nmap-ncat \
     && dnf clean all
 
 # Install PowerShell via direct tarball (RHEL repo not compatible with Fedora 40)

@@ -12,6 +12,9 @@ RUN pacman -Syu --noconfirm \
     parted \
     samba \
     cups \
+    iputils \
+    procps-ng \
+    openbsd-netcat \
     && pacman -Scc --noconfirm
 
 # Install PowerShell via direct binary (AUR not available in rootless containers)

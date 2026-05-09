@@ -10,7 +10,7 @@ multi-distro CI testing of the `peppekerstens` Linux PowerShell modules.
 | `ghcr.io/peppekerstens/pwsh-pester-ubuntu` | `ubuntu:24.04` | `24.04` |
 | `ghcr.io/peppekerstens/pwsh-pester-debian` | `debian:12` | `12` |
 | `ghcr.io/peppekerstens/pwsh-pester-fedora` | `fedora:40` | `40` |
-| `ghcr.io/peppekerstens/pwsh-pester-opensuse` | `opensuse/leap:15.6` | `leap` |
+| `ghcr.io/peppekerstens/pwsh-pester-opensuse` | `opensuse/tumbleweed` | `tumbleweed` |
 | `ghcr.io/peppekerstens/pwsh-pester-arch` | `archlinux:latest` | `latest` |
 
 Images are built and pushed to GHCR automatically on changes to any
