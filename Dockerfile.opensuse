@@ -3,6 +3,8 @@ FROM opensuse/tumbleweed
 RUN zypper --non-interactive refresh && zypper --non-interactive install -y \
     curl \
     wget \
+    gawk \
+    findutils \
     iproute2 \
     bind-utils \
     util-linux \
